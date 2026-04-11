@@ -1,6 +1,6 @@
 FROM pytorch/pytorch:1.13.1-cuda11.6-cudnn8-runtime
 
-# Dépendances système pour GDAL/rasterio
+# Dépendances système
 RUN apt-get update && apt-get install -y \
     libgdal-dev \
     gdal-bin \
@@ -9,18 +9,15 @@ RUN apt-get update && apt-get install -y \
     wget \
     && rm -rf /var/lib/apt/lists/*
 
-# Copie requirements.txt
-COPY requirements.txt .
-
-# Dépendances Python via requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Jupyter compatible JupyterHub
-RUN pip install --no-cache-dir \
-    jupyterlab==4.0.9 \
-    ipykernel==6.27.1 \
-    ipywidgets==8.1.1
+# Installer pip packages un par un pour isoler les erreurs
+RUN pip install --no-cache-dir numpy pandas scipy matplotlib seaborn tqdm Pillow
+RUN pip install --no-cache-dir scikit-learn
+RUN pip install --no-cache-dir torch==1.13.1 torchvision==0.14.1
+RUN pip install --no-cache-dir rasterio fiona pyproj shapely geopandas
+RUN pip install --no-cache-dir pystac-client
+RUN pip install --no-cache-dir laspy
+RUN pip install --no-cache-dir folium
+RUN pip install --no-cache-dir jupyterlab ipykernel ipywidgets
 
 WORKDIR /home/jovyan/work
-
 EXPOSE 8888
