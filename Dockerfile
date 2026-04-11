@@ -9,30 +9,17 @@ RUN apt-get update && apt-get install -y \
     wget \
     && rm -rf /var/lib/apt/lists/*
 
-# Dépendances Python — EcoHealth-ShrubMap pipeline
+# Copie requirements.txt en premier (cache Docker optimisé)
+COPY requirements.txt .
+
+# Dépendances Python via requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Jupyter compatible JupyterHub
 RUN pip install --no-cache-dir \
-    rasterio \
-    geopandas \
-    shapely \
-    pyproj \
-    fiona \
-    pystac-client \
-    planetary-computer \
-    laspy \
-    torch \
-    torchvision \
-    scikit-learn \
-    numpy \
-    scipy \
-    matplotlib \
-    seaborn \
-    folium \
-    tqdm \
-    pandas \
-    Pillow \
-    jupyterlab \
-    ipykernel \
-    ipywidgets
+    jupyterlab==4.0.9 \
+    ipykernel==6.27.1 \
+    ipywidgets==8.1.1
 
 WORKDIR /home/jovyan/work
 
