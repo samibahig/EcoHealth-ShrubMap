@@ -1,34 +1,21 @@
-# ✅ Par
 torch==1.13.1
 torchvision==0.14.1
-scikit-learn==1.3.2
-numpy==1.26.2
-scipy==1.11.4
-
-# Geospatial
-rasterio==1.3.9
-geopandas==0.14.1
-shapely==2.0.2
-pyproj==3.6.1
-fiona==1.9.5
-pystac-client==0.7.5
-planetary-computer==1.0.0
-
-# LiDAR / Point Cloud
-laspy==2.5.1
-pdal==3.2.0
-
-# Data
-pandas==2.1.3
-Pillow==10.1.0
-tqdm==4.66.1
-
-# Visualisation
-matplotlib==3.8.2
-seaborn==0.13.0
-folium==0.15.1
-
-# Jupyter
-jupyterlab==4.0.9
-ipykernel==6.27.1
-ipywidgets==8.1.1
+scikit-learn
+numpy
+scipy
+rasterio
+geopandas
+shapely
+pyproj
+fiona
+pystac-client
+laspy
+pandas
+Pillow
+tqdm
+matplotlib
+seaborn
+folium
+jupyterlab
+ipykernel
+ipywidgets
