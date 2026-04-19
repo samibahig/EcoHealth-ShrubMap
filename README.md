@@ -1,6 +1,6 @@
-# 🌿 EcoHealth-ShrubMap
+# ShrubMap Data Challenge
 
-> **End-to-end pipeline for mapping shrub distributions using LiDAR and high-resolution NAIP imagery, with applications for environmental health risk assessment.**
+**High-Resolution Shrub Segmentation Pipeline for Wildfire Risk & Public Health**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://python.org)
@@ -9,174 +9,192 @@
 
 ---
 
-## 🔍 Overview
+## Overview
 
-**EcoHealth-ShrubMap** is an open-source project integrating LiDAR point clouds and high-resolution NAIP imagery to detect and map shrub distributions across multiple sites. The pipeline produces rasterized shrub masks (GeoTIFF), calculates shrub density, and identifies high-density zones interpreted as potential environmental health risk areas.
+ShrubMap is an end-to-end deep learning pipeline for high-resolution shrub segmentation from NAIP multispectral imagery across 6 ecologically diverse California sites. It integrates 12 complementary input channels (spectral indices + texture features) and achieves **IoU=0.8397** with a ResNet34-UNet architecture trained on 192×192 patches.
 
-These zones correspond to areas where dense shrub coverage may contribute to **wildfire fuel load**, which can lead to smoke exposure affecting **respiratory and cardiovascular health**.
+This pipeline is motivated by the public health consequences of wildfire smoke exposure. Accurate shrub maps yield better fuel load estimates, more precise PM2.5 projections, and ultimately more effective emergency preparedness for vulnerable communities.
 
-The pipeline is **trained and optimized on Sedgwick Reserve**, with validation on **Independence Lake** to ensure generalization across different landscapes.
+**Best Performance (Sprint 4):**
 
-This project demonstrates how **multimodal environmental data + AI** can support:
-- 🔥 Public health preparedness
-- 🌱 Ecological monitoring
-- 🚒 Wildfire risk management
-
----
-
-## 🏗️ Pipeline Architecture
-
-```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│  Training       │───▶│  Training       │───▶│  Model          │───▶│  Model          │
-│  Labels         │    │  Data           │    │  Development    │    │  Application    │
-│                 │    │                 │    │                 │    │                 │
-│ Shrub mask &    │    │ NAIP + LiDAR    │    │ PyTorch seg.    │    │ GeoTIFF output  │
-│ height labels   │    │ fusion, CHM,    │    │ model training  │    │ all sites +     │
-│ from TLS/ALS    │    │ NDVI, cleaning  │    │ & tuning        │    │ health overlays │
-└─────────────────┘    └─────────────────┘    └─────────────────┘    └─────────────────┘
-```
-
-### Step-by-step:
-1. **Data Ingestion** — NAIP imagery + ALS LiDAR via STAC catalog
-2. **Preprocessing** — Point cloud filtering, CHM generation, NDVI computation
-3. **Feature Engineering** — Height normalization, spectral + structural features
-4. **Model Training** — PyTorch segmentation on Sedgwick Reserve
-5. **Inference at Scale** — Apply to all 8 sites, output GeoTIFF masks
-6. **Bonus: Height Extraction** — Shrub height raster as additional attribute
-7. **Health Risk Visualization** — Density maps with high-risk zone overlays
+| Model | IoU | F1 | Recall | Precision |
+|---|---|---|---|---|
+| ResNet34-UNet 192×192 run3 ★ | **0.8397** | 0.9055 | 0.9585 | 0.8579 |
+| Ensemble 2×ResNet34 (run2+3) | 0.8320 | 0.9083 | 0.9607 | 0.8613 |
 
 ---
 
-## 📁 Repository Structure
+## Pipeline Architecture
 
 ```
-EcoHealth-ShrubMap/
+NAIP 0.6m imagery (4 bands)
+        ↓
+Feature Engineering (12 channels)
+R, G, B, NIR + NDVI, EVI, TGI, NDWI, Brightness, VARI, texture_var, texture_ent
+        ↓
+TLS LiDAR masks → reprojection EPSG:26910 → binary label maps (ground truth)
+        ↓
+Patch extraction 64×64 (stride=16, min_shrub=5%) → 6,566 patches
+        ↓
+Upsample 192×192 + normalization (p1–p99 per channel)
+        ↓
+Augmentation ×6 (MixUp, CutMix, Copy-Paste, geometric, spectral)
+        ↓
+ResNet34-UNet training (Dice+BCE, pos_weight=21, early stopping)
+        ↓
+Ensemble IoU-weighted soft voting
+```
+
+---
+
+## Repository Structure
+
+```
+ShrubMap-Data-Challenge/
 │
-├── notebooks/
-│   └── shrub_pipeline_sprint4.ipynb   # Full end-to-end pipeline
+├── 01_data_preparation.ipynb          # Feature engineering, patch extraction, label alignment
+├── 01b_data_preparation_extra.ipynb   # Augmentation ×6 (MixUp, CutMix, Copy-Paste)
+├── 02_baseline_models.ipynb           # Random Forest, XGBoost, SVM baselines
+├── 03_deep_learning.ipynb             # ResNet34/50-UNet training (Sprint 4)
+├── 04_comparison_report.ipynb         # Model comparison, SHAP analysis, ensemble
 │
-├── outputs/
-│   ├── sedgwick_shrub_mask.tif        # Binary shrub mask — training site
-│   ├── independence_shrub_mask.tif    # Generalization test output
-│   └── shrub_density_map.tif          # Density + height attributes
-│
-├── README.md                          # This file
-└── requirements.txt                   # Python dependencies
+├── requirements.txt                   # Python dependencies
+└── README.md                          # This file
 ```
 
 ---
 
-## 🗂️ Datasets
+## Study Sites
 
-| Dataset | Type | Site |
-|---|---|---|
-| NAIP 3DEP Product - Sedgwick | Imagery + Elevation | Sedgwick Reserve *(train)* |
-| Sedgwick Reserve: LiDAR Directory | ALS Point Cloud | Sedgwick Reserve *(train)* |
-| NAIP 3DEP Product - Independence Lake | Imagery + Elevation | Independence Lake *(validation)* |
-| Independence Lake: LiDAR Directory | ALS Point Cloud | Independence Lake *(validation)* |
-| NAIP 3DEP Product - DL Bliss | Imagery + Elevation | D.L. Bliss State Park |
-| NAIP 3DEP Product - Calaveras Big Trees | Imagery + Elevation | Calaveras Big Trees SP |
-| NAIP 3DEP Product - Shaver Lake | Imagery + Elevation | Shaver Lake |
-| NAIP 3DEP Product - Pacific Union College | Imagery + Elevation | Pacific Union College |
+| Site | Biome | Masks | Split |
+|---|---|---|---|
+| Sedgwick Reserve | Oak savanna (300–500m) | 117 | Train |
+| Calaveras Big Trees | Mixed conifer (1200–1500m) | 105 | Train |
+| Independence Lake | Subalpine (2000m+) | 56 | Validation |
+| DL Bliss | Riparian, Lake Tahoe | 27 | Test |
+| Pacific Union College | Mediterranean coastal | 37 | Test |
+| Shaver Lake | Mixed Sierra Nevada | 23 | Test |
 
-> Datasets are accessible programmatically via the Shrubwise workspace STAC catalog. No manual download required on the challenge JupyterHub.
+**Total: 299 manually annotated TLS LiDAR masks**
 
 ---
 
-## ⚙️ Environment Setup
+## Environment Setup
 
-### ✅ Option A — NRP JupyterHub *(Recommended for Judges)*
+### Option A — NRP JupyterHub (Recommended)
 
-1. Log in at [NRP JupyterHub](https://datachallenge-jupyterhub.wildfirecommons.org)
-2. Configure your server:
-
-| Setting | Value |
-|---|---|
-| GPU | NVIDIA A100 80GB or RTX A6000 |
-| CPU Cores | 8–16 |
-| RAM | 32–64 GB |
-| Image (Bring Your Own) | `sambahig/ecohealthshrubmap:latest` |
-| /dev/shm for PyTorch | ✅ Enabled |
-| Architecture | amd64 |
-
-3. Open notebook: `notebooks/shrub_pipeline_sprint4.ipynb`
-4. Run all cells: **Kernel → Restart & Run All**
-
-> 🐳 Docker image built and published automatically via GitHub Actions CI/CD pipeline.
-> No manual installation required — all dependencies are pre-installed in the image.
-
-> ⚠️ **Note on GPU compatibility:** The GTX 1080 Ti (Compute Capability 6.1) is 
-> incompatible with PyTorch 2.1+. The custom Docker image resolves this by targeting 
-> CUDA 12.1 compatible GPUs (A100, RTX A6000, V100).
-
----
-
----
+1. Log in at [datachallenge-jupyterhub.wildfirecommons.org](https://datachallenge-jupyterhub.wildfirecommons.org)
+2. Configure server: 16 CPU cores, 64 GB RAM, GPU (automatically allocated by platform)
+3. Install dependencies:
+```bash
+pip install -r requirements.txt
+```
+4. Run notebooks in order: `01` → `01b` → `02` → `03` → `04`
 
 ### Option B — Local (CPU only)
 
 ```bash
-git clone https://github.com/samibahig/EcoHealth-ShrubMap.git
-cd EcoHealth-ShrubMap
+git clone https://github.com/samibahig/ShrubMap-Data-Challenge.git
+cd ShrubMap-Data-Challenge
 pip install -r requirements.txt
-jupyter lab notebooks/shrub_pipeline_sprint4.ipynb
+jupyter lab 01_data_preparation.ipynb
 ```
 
 ---
-### Option C — Docker (Advanced)
 
-```bash
-docker pull sambahig/ecohealthshrubmap:latest
-```
-
-## 🚀 How to Run
+## How to Run
 
 ```bash
 # 1. Install dependencies
 pip install -r requirements.txt
 
-# 2. Open the notebook
-jupyter lab notebooks/shrub_pipeline_sprint4.ipynb
+# 2. Run data preparation
+jupyter nbconvert --to notebook --execute 01_data_preparation.ipynb
+jupyter nbconvert --to notebook --execute 01b_data_preparation_extra.ipynb
 
-# 3. Run all cells
-# Kernel → Restart & Run All
+# 3. Run baseline models
+jupyter nbconvert --to notebook --execute 02_baseline_models.ipynb
+
+# 4. Run deep learning training (requires GPU, ~2-4 hours)
+jupyter nbconvert --to notebook --execute 03_deep_learning.ipynb
+
+# 5. Run comparison report
+jupyter nbconvert --to notebook --execute 04_comparison_report.ipynb
 ```
 
-Outputs (GeoTIFF) will be saved to the `outputs/` directory.
+Or simply open each notebook and run **Kernel → Restart & Run All**.
 
 ---
 
-## 📊 Output Format
+## Key Results
 
-| Output | Format | Description |
+| Model | IoU | F1 | Recall | Precision | Epochs |
+|---|---|---|---|---|---|
+| NDVI Threshold (baseline) | 0.185 | 0.312 | 0.760 | — | — |
+| Random Forest 128×128 + SMOTE | 0.571 | 0.728 | 0.827 | 0.651 | — |
+| EfficientNet-B3 UNet | 0.684 | 0.806 | 0.945 | — | 176 |
+| UNet 128×128 | 0.751 | 0.858 | 0.954 | 0.779 | 163 |
+| UNet-ResNet50 128×128 | 0.757 | 0.844 | 0.957 | — | 124 |
+| ResNet34-UNet 192×192 run3 ★ | **0.8397** | 0.9055 | 0.9585 | 0.8579 | 35 |
+| Ensemble 2×ResNet34 (run2+3) | **0.8320** | 0.9083 | 0.9607 | 0.8613 | — |
+
+**Literature benchmark:** Zhu et al. (2025) F1=0.789 — surpassed by our best model.
+
+---
+
+## Feature Engineering — 12 Channels
+
+| # | Channel | Description |
 |---|---|---|
-| `*_shrub_mask.tif` | GeoTIFF, EPSG:4326 | Binary shrub / no-shrub mask |
-| `shrub_density_map.tif` | GeoTIFF | Continuous shrub density |
-| `*_shrub_height.tif` | GeoTIFF *(bonus)* | Estimated shrub height (m) |
-| High-risk zone overlay | Visualization | Red zones = high wildfire fuel load |
+| 1–4 | R, G, B, NIR | Raw NAIP bands |
+| 5 | NDVI | Vegetation vigor |
+| 6 | EVI | Enhanced vegetation (reduces soil noise) |
+| 7 | TGI | Triangular greenness index |
+| 8 | NDWI | Water index (excludes water bodies) |
+| 9 | Brightness | Overall reflectance |
+| 10 | VARI | Visible atmospherically resistant index |
+| 11 | texture_var | Local NDVI variance (5×5 window) |
+| 12 | texture_ent | NIR Shannon entropy (disk radius 3) |
+
+**SHAP analysis:** `texture_ent` (0.171) and `texture_var` (0.099) are the most discriminative features.
 
 ---
 
-## 🏥 Public Health Application
+## Public Health Motivation
 
-The shrub density maps are interpreted through a **health risk lens**:
+Shrub mapping is a public health problem. The causal chain:
 
-- 🫁 **Respiratory** — High-density zones predict PM2.5 peaks and asthma/COPD exacerbation risk
-- 🫀 **Cardiovascular** — Early warning for VOC inhalation exposure in vulnerable populations
-- 🚒 **First Responder Safety** — Identification of ladder fuels to prevent flashover events
+```
+Shrub cover density → surface fuel load (kg/m²)
+        ↓
+Fuel load × ignition probability → fire intensity
+        ↓
+Fire intensity → PM2.5 emissions
+        ↓
+PM2.5 exposure → cardiopulmonary morbidity & mortality
+```
+
+In California, wildfires account for 50% of total primary PM2.5 emissions. A 30% increase in emergency visits at Rady's Children's Hospital was documented for each 10-unit PM2.5 increase from wildfire smoke (San Diego County). **Every false negative — every missed shrub patch — propagates directly to underestimated fire severity and inadequate public health preparedness.** This is why we prioritize Recall over Precision.
 
 ---
 
-## 🔑 Keywords
+## Green AI Commitment
 
-`LiDAR` · `NAIP imagery` · `shrub detection` · `wildfire risk` · `environmental health` · `geospatial AI` · `public health` · `remote sensing` · `GIS` · `machine learning` · `PyTorch` · `GeoTIFF` · `point cloud` · `ALS` · `CHM`
+- **Transfer learning** — ResNet34/50 ImageNet pretrained weights (60–80% compute reduction vs scratch)
+- **Early stopping** — patience=15, no wasted epochs
+- **Patch-based training** — memory-efficient, no full GeoTIFF processing
+- **Future:** CodeCarbon/CarbonTracker integration for CO2e reporting
 
 ---
 
-## 📄 License
+## License
 
 MIT License — see [LICENSE](LICENSE) for details.
 
 ---
 
+## Author
+
+**Sami Bahig** — AI Engineer & ML Researcher, MD MSc  
+Wildfire Science & Technology Commons, University of California San Diego  
+Shrubwise Data Challenge, Sprint 4 — April 2026
