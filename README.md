@@ -86,7 +86,20 @@ ShrubMap-Data-Challenge/
 ├── 01_data_preparation.ipynb      # Feature engineering, patch extraction, label alignment (6 sites)
 ├── 02_patch_preprocessing.ipynb   # Patch preprocessing, normalization, augmentation pipeline
 ├── 03_baseline_models.ipynb       # Random Forest, XGBoost, SVM baselines + SHAP analysis
-├── 04_deep_learning.ipynb         # ResNet34/50-UNet 192×192 training, ensembles (Sprint 4)
+├── 04_deep_learning.ipynb         # ResNet34/50-UNet 192×192 training, ensembles (Sprint 4) ← best model
+│
+├── 05_sam_segmentation.ipynb      # ⚠️ EXPERIMENTAL — Not yet run
+│                                  #   SAM zero-shot boundary delineation + structural features
+│                                  #   (area, compactness, convexity, Hu moments) + XGBoost/RF
+│                                  #   Hypothesis: morphological signature separates shrubs from soil/rock
+│                                  #   Better results expected vs spectral-only baselines
+│
+├── 06_sam_naip_resnet34.ipynb     # ⚠️ EXPERIMENTAL — Not yet run
+│                                  #   SAM × NAIP × ResNet34-UNet hybrid fusion
+│                                  #   SAM generates object proposals (from RGB) →
+│                                  #   ResNet34 scores each segment (mean P_shrub) →
+│                                  #   SAM-aligned boundaries + spectral accuracy
+│                                  #   Better results expected: estimated IoU > 0.8397
 │
 ├── task_als_tls.ipynb             # ALS/TLS LiDAR processing and shrub mask generation
 ├── tasks_3dep.ipynb               # 3DEP LiDAR data acquisition and CHM extraction
@@ -99,6 +112,70 @@ ShrubMap-Data-Challenge/
 ├── requirements.txt               # Python dependencies
 └── README.md                      # This file
 ```
+
+---
+
+## Experimental Notebooks (not yet run)
+
+> ⚠️ Notebooks `05` and `06` have been designed and coded but **not yet executed**.
+> They represent the next planned experiments. Better results than the current best (IoU=0.8397) are expected.
+> All code is ready to run on a GPU instance with the challenge data.
+
+### `05_sam_segmentation.ipynb` — SAM + Structural Features
+
+**Strategy:** Use Segment Anything Model (SAM) as a zero-shot boundary delineator, then classify each proposed segment using morphological/structural features (not spectral).
+
+**Hypothesis:** Shrubs occupy a distinctive morphological niche — compact, roughly convex, mid-scale objects — that SAM can detect without training, and whose structural signature separates them from soil, grass, rock, and tree canopy more reliably than NDVI alone.
+
+```
+NAIP RGB → SAM → candidate object masks
+                        ↓
+         Structural features per mask:
+         area · perimeter · compactness · elongation
+         convexity · aspect_ratio · solidity
+         fractal_dim · Hu moments (7) · SAM iou_pred
+                        ↓
+              XGBoost / Random Forest
+                        ↓
+          Binary shrub mask + IoU metrics
+```
+
+**Prerequisites:** GPU recommended for SAM ViT-H. Download:
+```bash
+wget https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth
+```
+
+---
+
+### `06_sam_naip_resnet34.ipynb` — SAM × ResNet34-UNet Hybrid Fusion
+
+**Strategy:** Fuse our best trained model (ResNet34-UNet, IoU=0.8397) with SAM boundary proposals. SAM provides clean object contours; ResNet34 provides per-pixel shrub probabilities. Fusion: for each SAM segment, compute mean P_shrub — if above threshold (θ=0.50), classify as shrub.
+
+**Hypothesis:** SAM boundary precision sharpens ResNet34 predictions, replacing ragged pixel-level edges with clean, object-aligned contours → higher IoU without retraining.
+
+```
+NAIP 12-channel patches          NAIP RGB (3 channels)
+        ↓                                 ↓
+ResNet34-UNet (trained)         SAM AutomaticMaskGenerator
+        ↓                                 ↓
+  P_shrub per pixel [0,1]     Object segment proposals
+        ↓                                 ↓
+        +──────── FUSION ─────────────────+
+                      ↓
+     For each SAM segment:
+       mean_prob = avg(P_shrub within segment)
+       shrub = 1  if  mean_prob ≥ 0.50
+       Uncovered pixels → ResNet34 threshold
+                      ↓
+         Final clean shrub mask
+```
+
+**Expected performance:** IoU 0.85–0.89 (vs current best 0.8397)
+
+**Prerequisites:**
+1. Run `04_deep_learning.ipynb` → saves `resnet34_run3_best.pth`
+2. Download SAM weights (see above)
+3. GPU instance recommended (~20 min on A100 for 87 test patches)
 
 ---
 
@@ -136,6 +213,13 @@ Then open `http://localhost:8888` and run the notebooks in order.
 pip install -r requirements.txt
 ```
 
+For experimental notebooks (05 & 06), also install:
+
+```bash
+pip install segment-anything
+wget https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth
+```
+
 ---
 
 ## How to Run
@@ -157,8 +241,15 @@ jupyter nbconvert --to notebook --execute 02_patch_preprocessing.ipynb
 # Baseline models
 jupyter nbconvert --to notebook --execute 03_baseline_models.ipynb
 
-# Deep learning training (~2-4 hours with GPU)
+# Deep learning training (~2-4 hours with GPU) — saves resnet34_run3_best.pth
 jupyter nbconvert --to notebook --execute 04_deep_learning.ipynb
+
+# ─── Experimental (not yet run) ─────────────────────────────────────────────
+# SAM structural features (requires sam_vit_h_4b8939.pth)
+jupyter nbconvert --to notebook --execute 05_sam_segmentation.ipynb
+
+# SAM x ResNet34 hybrid fusion (requires resnet34_run3_best.pth + SAM weights)
+jupyter nbconvert --to notebook --execute 06_sam_naip_resnet34.ipynb
 ```
 
 Or open each notebook and run **Kernel → Restart & Run All**.
@@ -176,6 +267,10 @@ Or open each notebook and run **Kernel → Restart & Run All**.
 | UNet-ResNet50 128×128 | 0.757 | 0.844 | 0.957 | — | 124 |
 | **ResNet34-UNet 192×192 run3 ★** | **0.8397** | **0.9055** | **0.9585** | **0.8579** | **35** |
 | Ensemble 2×ResNet34 (run2+3) | 0.8320 | 0.9083 | 0.9607 | 0.8613 | — |
+| SAM + structural features (05) ⚠️ | TBD | TBD | TBD | TBD | — |
+| SAM × ResNet34 fusion (06) ⚠️ | TBD | TBD | TBD | TBD | — |
+
+⚠️ = experimental notebook, not yet run — better results expected
 
 **Literature benchmark surpassed:** Zhu et al. (2025) F1=0.789
 
@@ -197,50 +292,8 @@ Or open each notebook and run **Kernel → Restart & Run All**.
 
 **SHAP analysis:** texture_ent (0.171) and texture_var (0.099) are the most discriminative features.
 
-![SHAP Feature Importance](shap_feature_importance.png)
-
-*Random Forest Feature Importance (12 channels). texture_ent dominates — surface complexity and roughness are the key shrub indicators.*
-
-![Feature Maps Calaveras Big Trees](feature_maps.png)
-
-*Feature maps for Calaveras Big Trees site. Top row: NAIP RGB, NDVI, EVI, TGI. Bottom row: NDWI, Brightness, Texture Variance, Texture Entropy. TEXTURE_ENT shows the highest discriminative power.*
-
----
-
-## Public Health Motivation
-
-Shrub mapping is a public health problem. The causal chain:
-
-```
-Shrub cover density → surface fuel load (kg/m²)
-        ↓
-Fuel load × ignition probability → fire intensity
-        ↓
-Fire intensity → PM2.5 emissions
-        ↓
-PM2.5 exposure → cardiopulmonary morbidity & mortality
-```
-
-In California, wildfires account for 50% of total primary PM2.5 emissions. A 30% increase in emergency visits at Rady's Children's Hospital was documented for each 10-unit PM2.5 increase from wildfire smoke (San Diego County). Every false negative — every missed shrub patch — propagates directly to underestimated fire severity and inadequate public health preparedness. This is why we prioritize Recall over Precision.
-
----
-
-## Green AI Commitment
-
-- **Transfer learning** — ResNet34/50 ImageNet pretrained weights (60–80% compute reduction vs scratch)
-- **Early stopping** — patience=15, no wasted epochs
-- **Patch-based training** — memory-efficient, no full GeoTIFF processing
-- **Future:** CodeCarbon/CarbonTracker integration for CO2e reporting per training run
-
----
-
-## Pre-trained Model
-
-Best model checkpoint available on request.  
-Architecture: `segmentation_models_pytorch.Unet(encoder_name='resnet34', in_channels=12, classes=1)`
-
 ---
 
 ## License
 
-MIT License — see LICENSE for details.
+This repository is part of the Shrubwise Data Challenge submission by Sami Bahig, UCSD/SDSC, April 2026.
